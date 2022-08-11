@@ -6,6 +6,9 @@ plaintext algorithm names that an SSH client MUST implement according to
 rfc4253. However, an adversary could easily avoid detection by this by applying
 a set of transformations on the stored strings before use.
 
+A more robust implementation would look into syscalls and into the steps of ssh
+connection establishment logic to identify an SSH client.
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -81,17 +84,17 @@ int main(int argc, char *argv[]) {
 Without assuming an encyption scheme, it is extremely difficult to tell whether
 a file is encrypted with high certainty. Consider a plaintext file of random 
 characters. If that file were to be encrypted using a caesar cipher, there 
-would be no way to tell without prior knowledge of the cleartext which is
-which. 
+would be no way to tell without prior knowledge of the cleartext which is which.
 
 Modern and secure cryptography algorithms create output with very high entropy,
-however, so do compressed formats like zip files and compressed video files. 
-Furthermore, a zip file may be also encrypted. 
+however so do compressed formats like zip files and video files. Furthermore, a
+zip file may be also encrypted, blurring the scope of the question.
 
 In short, without matching file signatures and parsing their metadata or 
-analyzing repeating file structures (which would take a lot of research that
-I think is outside the scope of this question), there is no generalized way
-of identifying an encrypted file without assuming encryption scheme.
+analyzing repeating file structures (which would take a lot of research for 
+each file format that I think is outside the scope of this question), there is 
+no generalized way of identifying an encrypted file without assuming encryption 
+scheme.
 
 However, using the concept of file signatures, it is possible to identify
 known file formats that are encrypted. For example, an encrypted telegram 
@@ -286,4 +289,10 @@ This is still exploitable.
 
 
 
+A final note, I wasn't certain how much code I was supposed to write for quest-
+ions 1 through 3. I tried keeping everything within a single function except for
+question 3 where to facilitate unit testing, I split off parse_uri into its own
+file.
 
+I would be more than happy to write something more complex and larger scale if
+that matters.

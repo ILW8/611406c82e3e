@@ -1,0 +1,289 @@
+1. 
+A Windows PE being an SSH client is slightly broad, so I will assume it to 
+also include executables that can act as an SSH client despite not being its
+primary function. I attempt to identify such executables by looking for the
+plaintext algorithm names that an SSH client MUST implement according to 
+rfc4253. However, an adversary could easily avoid detection by this by applying
+a set of transformations on the stored strings before use.
+
+#include <iostream>
+#include <fstream>
+#include <vector>
+
+using namespace std;
+
+
+// read in Windows PE file and determine if file is an SSH client
+int main(int argc, char *argv[]) {
+    // first command line argument should be file path to a Windows PE file
+    if (argc != 2) {
+        cout << "Usage: " << argv[0] << " FILE_PATH" << endl;
+        cout << "Expected 1 argument, got " << argc - 1 << endl;
+    }
+
+    ifstream infile;
+    try {
+        infile.open(argv[1], ios::binary);
+        if (infile.fail()) {
+            cout << "Could not open '" << argv[1] << "'";
+            return -1;
+        }
+    }
+    catch (const ifstream::failure &e) {
+        cout << "Could not open '" << argv[1] << "'";
+        return -1;
+    }
+
+    // first determine if file is Windows PE using its PE signature
+    unsigned int pe_signature_offset = 0;
+    infile.seekg(0x3c);
+    for (int byte = 0; byte < 4; byte++) {
+        pe_signature_offset |= infile.get() << byte * 8;
+    }
+
+    char win_pe_signature[] = {'P', 'E', '\0', '\0'};
+    infile.seekg(pe_signature_offset);
+    for (char byte: win_pe_signature) {
+        if (infile.get() != byte) {
+            cout << "File not a Windows Portable Executable";
+            return 1;
+        }
+    }
+
+    // locate required algorithm names within executable's strings according to rfc4253
+    vector<string> required_algorithms = {"3des-cbc",
+                                          "hmac-sha1",
+                                          "diffie-hellman-group14-sha1",
+                                          "diffie-hellman-group1-sha1",
+                                          "ssh-dss"};
+    infile.seekg(0, ios_base::end);
+    unsigned int file_length = infile.tellg();
+    char *buffer = new char[file_length];
+
+    infile.seekg(0, ios_base::beg);
+    infile.read(buffer, file_length);
+    string executable_data(buffer, file_length);
+
+    for (const string &required_algo: required_algorithms) {
+        if (string::npos == executable_data.find(required_algo)) {
+            cout << "Missing required algorithm " << "'" << required_algo << "'";
+            return 1;
+        }
+    }
+
+    cout << "File is likely an SSH client or contains an SSH client" << endl;
+    return 0;
+}
+
+
+
+2. 
+Without assuming an encyption scheme, it is extremely difficult to tell whether
+a file is encrypted with high certainty. Consider a plaintext file of random 
+characters. If that file were to be encrypted using a caesar cipher, there 
+would be no way to tell without prior knowledge of the cleartext which is
+which. 
+
+Modern and secure cryptography algorithms create output with very high entropy,
+however, so do compressed formats like zip files and compressed video files. 
+Furthermore, a zip file may be also encrypted. 
+
+In short, without matching file signatures and parsing their metadata or 
+analyzing repeating file structures (which would take a lot of research that
+I think is outside the scope of this question), there is no generalized way
+of identifying an encrypted file without assuming encryption scheme.
+
+However, using the concept of file signatures, it is possible to identify
+known file formats that are encrypted. For example, an encrypted telegram 
+desktop file is known to be encrypted and starts with bytes:
+0x54, 0x44, 0x45, 0x46
+If a file starts with this sequence of bytes, it's highly likely the file
+is encrypted. 
+Using this approach, we get the following program with a
+few sample signatures:
+
+#include <iostream>
+#include <fstream>
+#include <vector>
+
+using namespace std;
+
+
+int main(int argc, char *argv[]) {
+    // first command line argument should be file path
+    if (argc != 2) {
+        cout << "Usage: " << argv[0] << " FILE_PATH" << endl;
+        cout << "Expected 1 argument, got " << argc - 1 << endl;
+    }
+
+
+    ifstream infile;
+    try {
+        infile.open(argv[1], ios::binary);
+        if (infile.fail()) {
+            cout << "Could not open '" << argv[1] << "'";
+            return -1;
+        }
+    }
+    catch (const ifstream::failure &e) {
+        cout << "Could not open '" << argv[1] << "'";
+        return -1;
+    }
+
+    // check if file matches against known magic number
+    // pair: offset, signature bytes
+    vector<pair<int, vector<int>>> magic_numbers = {
+            {0, {0x54, 0x44, 0x45, 0x46}},  // encrypted telegram desktop file
+            {0, {0x65, 0x6E, 0x63, 0x72, 0x63, 0x64, 0x73, 0x61}}  // Macintosh encrypted Disk image (v2)
+    };
+
+    for (pair magic_num: magic_numbers) {
+        bool sig_matched = true;
+        int signature_length = static_cast<int>(magic_num.second.size());
+        infile.seekg(magic_num.first + signature_length);
+        if (infile.eof()) {
+            continue;
+        }
+
+        infile.seekg(magic_num.first);
+        for (int i = 0; i < signature_length; i++) {
+            if (magic_num.second[i] < 0) {
+                infile.get();
+                continue;  // negative int in signature indicates any byte may be present
+            }
+
+            if (infile.get() != magic_num.second[i]) {
+                sig_matched = false;
+                break;
+            }
+        }
+
+        if (sig_matched) {
+            cout << "File matched a known magic number of an encrypted file format.";
+            return 0;
+        }
+    }
+    return 0;
+}
+
+
+
+3.
+This question involves more files than previously, so I'll include a link to a 
+GitHub repository instead of trying to cram it all in this text file while
+trying to explain the directory structure. 
+
+
+
+The file that answers this question
+is 'q3.cpp' and builds as 'threatspike_tech_question_3'. Unit tests are also 
+included under 'Google_tests/q3_tests.cpp'.
+
+This parser does not attempt to validate the URI provided by the user, it
+merely attempts to parse URIs using the ABNF described in rfc3986; it assumes 
+that the provided URI is a valid URI.
+
+
+
+4.
+function reverse_endianness(input_number) {
+    let reversed = 0;
+
+    input_number ^= 0; // truncates number to be 32-bit
+    for (let i = 0; i < 4; i++) {
+        reversed |= (0xFF & (input_number >> 8 * i)) << 8 * (3 - i)
+    }
+
+    return reversed;
+}
+
+
+
+5.
+If the internal payroll application is specifically designed to detect 
+exfiltration, then it could ping an internet endpoint with host
+information, such as hostname, interface addresses, gateway address, 
+environment variables, and other such information on startup. If the hacker
+neglects skipping over or placing a breakpoint right before these instructions
+sending the ping in their debugger, the company would receive a ping from an 
+internet IP that it doesn't own with information about a host which the 
+company's network doesn't know about.
+
+More trivially, the application could be trying to fetch data it needs to 
+function from a domain name. When run within the company, the domain name 
+resolves to an internal address and works correctly, whereas when run outside 
+of the company on the internet, it would resolve to a honeypot server which 
+logs information about the origin of the request and alerts the company that
+the application has been leaked.
+
+
+
+6.
+The SHA256sum of a file doesn't take into account the file's name. This 
+absolves the need to find collisions with SHA256. The filename could use 
+unicode homoglyphs or zero-width space characters in the filename. If the 
+uploader doesn't rename the file before uploading, ThreatSpike can check which 
+employee received the file with the filename matching the one that leaked.
+
+
+
+7. 
+The baby moves more when awake. Video compression is able to use very little 
+bitrate for non-moving video (mostly for encoding sensor noise) while video 
+with motion take up more bits. By looking for sudden increase in network 
+traffic with the two computers at the same time, he is able to guess when 
+his baby wakes up, or at least when there is movement in the video going
+through Skype.
+
+
+
+8.
+No. Stack overflow vulnerabilities would still be possible. Instead of over-
+flowing into a function's own stack frame return pointer, an attacker could
+still cause overflow and overwrite a callee's stack frame return pointer. 
+
+Example in C:
+
+ 1    void read_input(char *buffer){
+ 2        printf("Enter your height in cm: ");
+ 3        scanf("%s", buffer);
+ 4    }
+ 5 
+ 6    void calculate_height(){
+ 7        char buf[12];  // height in cm
+ 8        read_input();
+ 9        printf("Calculating...\n");
+10        printf("Your height is %scm!");
+11    }
+
+
+Stack view: 
+
+ |    ........    |
+ +----------------+                                (lower memory address)
+ | <return  addr> |  < calculate_height frame         v
+ +----------------+  
+ |  <saved   fp>  |                                   v
+ +----------------+                  
+ |                |                                   v                                  
+ | <some  buffer> |                                            
+ |                |                                   v
+ +----------------+
+ |    <arg  1>    |< read_input frame                 v
+ +----------------+
+ | <return  addr> |                                   v
+ +----------------+  
+ |  <saved   fp>  |                                   v 
+ +----------------+                                (higher memory address)
+
+
+
+
+When provided with a long enough input, scanf on line 3 would write into 
+buf, which is allocated on calculate_height's stack frame. Instead of over-
+writing its own return address, this overwrites read_input's return address.
+This is still exploitable.
+
+
+
+
